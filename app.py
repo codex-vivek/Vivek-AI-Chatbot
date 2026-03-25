@@ -69,8 +69,15 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/8624/8624102.png", width=100) # Simple bot icon
     st.header("⚙️ Configuration")
     
-    # Using password input for API key
-    api_key = st.text_input("Enter your Google Gemini API Key:", type="password", help="You can get this from Google AI Studio").strip()
+    # Try to get the API key automatically from Streamlit Secrets when live
+    try:
+        api_key = st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        api_key = ""
+        
+    # If the secret isn't configured, fallback to asking the user via the sidebar
+    if not api_key:
+        api_key = st.text_input("Enter your Google Gemini API Key:", type="password", help="You can get this from Google AI Studio").strip()
     
     st.markdown("---")
     st.markdown("### 💡 Key Features")
