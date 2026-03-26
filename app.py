@@ -123,22 +123,29 @@ if prompt:
         st.stop()
 
         
-    # 2. Search for latest info if needed (Simple keyword check)
-    search_keywords = ["latest", "recent", "today", "now", "news", "current", "kaun hai", "kiske", "who is", "match", "score"]
+    # 2. Search for latest info if needed (Expanded keyword check)
+    search_keywords = ["latest", "recent", "today", "now", "news", "current", "kaun hai", "kiske", "who is", "match", "score", "price", "stock", "breaking", "yesterday", "hal hi mein", "samachar"]
     search_context = ""
     
+    # If the prompt contains a keyword or looks like a current query
     if any(keyword in prompt.lower() for keyword in search_keywords):
         with st.status("🔍 Searching the internet for latest updates...") as status:
             try:
                 with DDGS() as ddgs:
+                    # Refining search query to be more effective
                     results = list(ddgs.text(prompt, max_results=5))
                     if results:
-                        search_context = "\n\nLATEST SEARCH CONTEXT FROM INTERNET:\n"
+                        search_context = f"\n\n--- INTERNET SEARCH RESULTS FOR '{prompt}' ---\n"
                         for i, r in enumerate(results):
-                            search_context += f"- {r['body']}\n"
-                status.update(label="✅ Search complete!", state="complete")
+                            search_context += f"SOURCE {i+1}: {r['body']}\n"
+                        search_context += "--- END OF SEARCH RESULTS ---\n\n"
+                        
+                        status.update(label="✅ Search complete! Vivek AI is analyzing the news...", state="complete")
+                    else:
+                        status.update(label="⚠️ Search finished but no results found.", state="complete")
             except Exception as e:
-                status.update(label="⚠️ Search failed, using base knowledge.", state="error")
+                status.update(label=f"⚠️ Search failed: {str(e)}", state="error")
+
 
     # 3. Add user message to state and display
     st.session_state.messages.append({"role": "user", "content": prompt})
@@ -149,7 +156,14 @@ if prompt:
     try:
         # Build strict history representation from session state
         # Include search context in the last message's part for grounding
-        history_list = [{"role": "system", "content": "You are Vivek AI, a helpful, friendly assistant. Use the provided search context if available to answer questions accurately. If no search context is provided or useful, use your own knowledge."}]
+        system_instructions = (
+            "You are Vivek AI, a helpful, friendly, and highly intelligent AI assistant. "
+            "IMPORTANT: When search context is provided below, you MUST use it to answer the user's question, even if it's about today's events, latest news, or breaking events. "
+            "DO NOT give refusal messages or disclaimers about not having real-time access. "
+            "Just answer the question directly using the search results provided."
+        )
+        
+        history_list = [{"role": "system", "content": system_instructions}]
         
         for msg in st.session_state.messages[:-1]:
             history_list.append({"role": msg["role"], "content": msg["content"]})
@@ -157,9 +171,16 @@ if prompt:
         # Add the current prompt with search context
         final_prompt_content = prompt
         if search_context:
-            final_prompt_content = f"Question: {prompt}\n{search_context}\nPlease answer based on this context if it's relevant."
+            final_prompt_content = (
+                f"The user wants latest information. I searched the internet for you. "
+                f"Here are the search results:\n{search_context}\n\n"
+                f"USER QUESTION: {prompt}\n\n"
+                f"Please provide a final, direct answer to the user based on these results. "
+                f"Speak confidently as Vivek AI."
+            )
             
         history_list.append({"role": "user", "content": final_prompt_content})
+
 
             
         with st.chat_message("assistant"):
