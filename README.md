@@ -5,13 +5,13 @@ A Vivek AI-powered chatbot that can answer user queries in real time through a s
 ## 🔧 Tech Stack
 - Python
 - Streamlit
-- Google Generative AI (Gemini API)
+- Sarvam AI API
 - VS Code
 
 ## 💡 Key Features
 - ✅ Clean and user-friendly interface
 - ✅ Real-time question answering
-- ✅ Integrated with Gemini 1.5 Flash / Gemini Flash model
+- ✅ Integrated with Sarvam AI Models
 - ✅ Fast and interactive AI responses
 - ✅ Fully customizable sidebar
 
@@ -31,10 +31,14 @@ This project was a great step in my journey of exploring AI, LLMs, and intellige
 pip install -r requirements.txt
 ```
 
-2. **Run the Application**
+2. **Configure API Key**
+Create a `.streamlit/secrets.toml` file and add your Sarvam AI API key:
+```toml
+SARVAM_API_KEY = "your_sarvam_api_key_here"
+```
+
+3. **Run the Application**
 ```bash
 streamlit run app.py
 ```
-
-3. **Provide API Key**
-Open the provided local URL and enter your Google Gemini API key in the sidebar to start chatting with Vivek AI!
+Vivek AI will now use the API key from your secrets file securely!

@@ -1,8 +1,7 @@
 import streamlit as st
-from google import genai
-from google.genai import types
-
-# --- PAGE CONFIGURATION ---
+import requests
+import json
+import time# --- PAGE CONFIGURATION ---
 st.set_page_config(
     page_title="Vivek AI Chatbot",
     page_icon="🤖",
@@ -69,21 +68,25 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/8624/8624102.png", width=100) # Simple bot icon
     st.header("⚙️ Configuration")
     
-    # Try to get the API key automatically from Streamlit Secrets when live
-    try:
-        api_key = st.secrets["GEMINI_API_KEY"]
-    except Exception:
-        api_key = ""
-        
-    # If the secret isn't configured, fallback to asking the user via the sidebar
+    # Attempt to load the API key from st.secrets or environment variables
+    # This keeps it hidden from the UI users
+    api_key = os.getenv("SARVAM_API_KEY") 
     if not api_key:
-        api_key = st.text_input("Enter your Google Gemini API Key:", type="password", help="You can get this from Google AI Studio").strip()
+        try:
+            api_key = st.secrets["SARVAM_API_KEY"]
+        except Exception:
+            api_key = ""
+            
+    if not api_key or api_key == "YOUR_API_KEY_HERE":
+        st.error("⚠️ **API key missing!** Please add your `SARVAM_API_KEY` to the `.streamlit/secrets.toml` file or as an environment variable to start chatting.")
+        st.stop()
+
     
     st.markdown("---")
     st.markdown("### 💡 Key Features")
     st.markdown("✅ Clean and user-friendly interface")
     st.markdown("✅ Real-time question answering")
-    st.markdown("✅ Integrated with Gemini 1.5 Flash")
+    st.markdown("✅ Integrated with Sarvam AI")
     st.markdown("✅ Fast and interactive AI responses")
     
     st.markdown("---")
@@ -105,78 +108,69 @@ for msg in st.session_state.messages:
 prompt = st.chat_input("Ask Vivek AI a question...")
 
 if prompt:
-    # 1. Stop if no API key
-    if not api_key:
-        st.warning("⚠️ Please enter your **Gemini API Key** in the sidebar to start chatting with Vivek AI.")
+    # 1. Double check API key
+    if not api_key or api_key == "YOUR_API_KEY_HERE":
+        st.warning("⚠️ **API key not configured.** Please add it to your secrets or environment variables.")
         st.stop()
+
         
     # 2. Add user message to state and display
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # 3. Configure Gemini and generate response
+    # 3. Configure Sarvam API and generate response
     try:
-        # Streamlit works statically via reruns, so preserving a TCP-based Client object 
-        # breaks between re-runs. We reconstruct the connection cleanly every time.
-        client = genai.Client(api_key=api_key)
-        
-        # Build strict history representation strictly from session state (excluding the current prompt)
-        history_list = []
-        for msg in st.session_state.messages[:-1]:
-            role = "user" if msg["role"] == "user" else "model"
-            history_list.append(
-                types.Content(role=role, parts=[types.Part.from_text(text=msg["content"])])
-            )
+        # Build strict history representation strictly from session state
+        history_list = [{"role": "system", "content": "You are Vivek AI, a helpful, friendly, and highly intelligent AI assistant created for this project. Answer queries in a helpful and engaging way."}]
+        for msg in st.session_state.messages:
+            history_list.append({"role": msg["role"], "content": msg["content"]})
             
-        chat_session = client.chats.create(
-            model="gemini-2.5-flash",
-            config=types.GenerateContentConfig(
-                system_instruction="You are Vivek AI, a helpful, friendly, and highly intelligent AI assistant created for this project. Answer queries in a helpful and engaging way."
-            ),
-            history=history_list
-        )
-        
         with st.chat_message("assistant"):
             response_placeholder = st.empty()
             full_response = ""
             
-            import time
-            max_retries = 3
-            success = False
-            
-            # Stream the response with automatic retries for server overloads
             with st.spinner("Vivek AI is thinking..."):
-                for attempt in range(max_retries):
-                    try:
-                        response = chat_session.send_message_stream(prompt)
-                        for chunk in response:
-                            if chunk.text:
-                                full_response += chunk.text
-                                response_placeholder.markdown(full_response + "▌")
-                        
-                        success = True
-                        break # Break out of the retry loop if successful
-                    except Exception as e:
-                        if "503" in str(e) and attempt < max_retries - 1:
-                            # Server is overloaded, wait 3 seconds before retrying silently
-                            time.sleep(3)
-                            continue
-                        else:
-                            # If it's a different error or we ran out of retries, raise it to be caught by the outer try-except
-                            raise e
-                            
-                if success:
+                url = "https://api.sarvam.ai/v1/chat/completions"
+                headers = {
+                    "Content-Type": "application/json",
+                    "api-subscription-key": api_key
+                }
+                data = {
+                    "model": "sarvam-30b",  # or whichever sarvam model you're using, like sarvam-105B or sarvam-2b-v0.5
+                    "messages": history_list,
+                    "stream": True,
+                    "temperature": 0.7
+                }
+                
+                response = requests.post(url, headers=headers, json=data, stream=True)
+                
+                if response.status_code == 200:
+                    for line in response.iter_lines():
+                        if line:
+                            decoded_line = line.decode('utf-8')
+                            if decoded_line.startswith('data: ') and decoded_line != 'data: [DONE]':
+                                try:
+                                    chunk = json.loads(decoded_line[6:])
+                                    if 'choices' in chunk and len(chunk['choices']) > 0:
+                                        content = chunk['choices'][0].get('delta', {}).get('content', '')
+                                        if content:
+                                            full_response += content
+                                            response_placeholder.markdown(full_response + "▌")
+                                except json.JSONDecodeError:
+                                    pass
                     # Finally, display the complete response without the cursor
                     response_placeholder.markdown(full_response)
-                
-        # 4. Add assistant response to state
-        if success:
-            st.session_state.messages.append({"role": "assistant", "content": full_response})
+                    # 4. Add assistant response to state
+                    st.session_state.messages.append({"role": "assistant", "content": full_response})
+                else:
+                    error_msg = response.text
+                    if response.status_code == 401:
+                        st.error("❌ It looks like your API key is invalid. Please check the sidebar and try again.")
+                    elif response.status_code == 429:
+                        st.warning("⏳ **API Limit Reached!** \n\nAapki limit cross ho gayi hai. Please wait before sending another message!")
+                    else:
+                        st.error(f"An error occurred: {error_msg}")
 
     except Exception as e:
-        error_message = f"An error occurred: {str(e)}"
-        st.error(error_message)
-        # If API key is invalid, this will catch it
-        if "API_KEY_INVALID" in str(e):
-            st.error("It looks like your API key is invalid. Please check the sidebar and try again.")
+        st.error(f"An error occurred: {str(e)}")
