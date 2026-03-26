@@ -123,8 +123,13 @@ if prompt:
         st.stop()
 
         
-    # 2. Search for latest info if needed (Expanded keyword check)
-    search_keywords = ["latest", "recent", "today", "now", "news", "current", "kaun hai", "kiske", "who is", "match", "score", "price", "stock", "breaking", "yesterday", "hal hi mein", "samachar"]
+    # 2. Search for latest info if needed (Included Hindi/Devanagari keywords)
+    search_keywords = [
+        "latest", "recent", "today", "now", "news", "current", "kaun hai", "kiske", "who is", "match", "score", 
+        "price", "stock", "breaking", "yesterday", "hal hi mein", "samachar", "breaking news",
+        "आज", "कल", "न्यूज़", "समाचार", "ब्रेकिंग", "स्कोर", "मैच", "ताज़ा", "खबर", "कौन", "किसका", "भाव"
+    ]
+
     search_context = ""
     
     # If the prompt contains a keyword or looks like a current query
