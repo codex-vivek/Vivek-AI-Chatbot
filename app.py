@@ -1,7 +1,14 @@
 import streamlit as st
 import requests
 import json
-import time# --- PAGE CONFIGURATION ---
+import time
+from dotenv import load_dotenv
+from duckduckgo_search import DDGS
+
+# Load environment variables from .env file if it exists
+load_dotenv()
+
+# --- PAGE CONFIGURATION ---
 st.set_page_config(
     page_title="Vivek AI Chatbot",
     page_icon="🤖",
@@ -68,9 +75,10 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/8624/8624102.png", width=100) # Simple bot icon
     st.header("⚙️ Configuration")
     
-    # Attempt to load the API key from st.secrets or environment variables
-    # This keeps it hidden from the UI users
+    # Priority 1: Load from environment variables (including .env file via load_dotenv)
+    # Priority 2: Load from Streamlit secrets
     api_key = os.getenv("SARVAM_API_KEY") 
+    
     if not api_key:
         try:
             api_key = st.secrets["SARVAM_API_KEY"]
@@ -78,8 +86,9 @@ with st.sidebar:
             api_key = ""
             
     if not api_key or api_key == "YOUR_API_KEY_HERE":
-        st.error("⚠️ **API key missing!** Please add your `SARVAM_API_KEY` to the `.streamlit/secrets.toml` file or as an environment variable to start chatting.")
+        st.error("⚠️ **API key missing!** Please add your `SARVAM_API_KEY` to the `.streamlit/secrets.toml` file or a `.env` file to start chatting.")
         st.stop()
+
 
     
     st.markdown("---")
@@ -114,17 +123,44 @@ if prompt:
         st.stop()
 
         
-    # 2. Add user message to state and display
+    # 2. Search for latest info if needed (Simple keyword check)
+    search_keywords = ["latest", "recent", "today", "now", "news", "current", "kaun hai", "kiske", "who is", "match", "score"]
+    search_context = ""
+    
+    if any(keyword in prompt.lower() for keyword in search_keywords):
+        with st.status("🔍 Searching the internet for latest updates...") as status:
+            try:
+                with DDGS() as ddgs:
+                    results = list(ddgs.text(prompt, max_results=5))
+                    if results:
+                        search_context = "\n\nLATEST SEARCH CONTEXT FROM INTERNET:\n"
+                        for i, r in enumerate(results):
+                            search_context += f"- {r['body']}\n"
+                status.update(label="✅ Search complete!", state="complete")
+            except Exception as e:
+                status.update(label="⚠️ Search failed, using base knowledge.", state="error")
+
+    # 3. Add user message to state and display
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # 3. Configure Sarvam API and generate response
+    # 4. Configure Sarvam API and generate response
     try:
-        # Build strict history representation strictly from session state
-        history_list = [{"role": "system", "content": "You are Vivek AI, a helpful, friendly, and highly intelligent AI assistant created for this project. Answer queries in a helpful and engaging way."}]
-        for msg in st.session_state.messages:
+        # Build strict history representation from session state
+        # Include search context in the last message's part for grounding
+        history_list = [{"role": "system", "content": "You are Vivek AI, a helpful, friendly assistant. Use the provided search context if available to answer questions accurately. If no search context is provided or useful, use your own knowledge."}]
+        
+        for msg in st.session_state.messages[:-1]:
             history_list.append({"role": msg["role"], "content": msg["content"]})
+            
+        # Add the current prompt with search context
+        final_prompt_content = prompt
+        if search_context:
+            final_prompt_content = f"Question: {prompt}\n{search_context}\nPlease answer based on this context if it's relevant."
+            
+        history_list.append({"role": "user", "content": final_prompt_content})
+
             
         with st.chat_message("assistant"):
             response_placeholder = st.empty()
